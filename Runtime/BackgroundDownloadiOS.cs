@@ -61,10 +61,21 @@ namespace Unity.Networking
                 {
                     IntPtr backend = loadedDownloads[i];
                     BackgroundDownloadConfig config = new BackgroundDownloadConfig();
-                    int length = UnityBackgroundDownloadGetUrl(backend, buffer);
-                    config.url = new Uri(MarshalObjCString(buffer, length));
-                    length = UnityBackgroundDownloadGetFilePath(backend, buffer);
+                    int length = UnityBackgroundDownloadGetFilePath(backend, buffer);
                     config.filePath = MarshalObjCString(buffer, length);
+                    try
+                    {
+                        length = UnityBackgroundDownloadGetUrl(backend, buffer);
+                        if (length != 0)
+                        {
+                            config.url = new Uri(MarshalObjCString(buffer, length));
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        Debug.LogError($"BackgroundDownloadiOS.LoadDownloads UnityBackgroundDownloadGetUrl failed! {config.filePath}");
+                    }
+
                     var dl = new BackgroundDownloadiOS(backend, config);
                     downloads[config.filePath] = dl;
                 }

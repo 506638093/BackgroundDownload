@@ -3,6 +3,8 @@
 
 typedef void (^UnityHandleEventsForBackgroundURLSession)();
 
+#define IS_IOS10ORLATER ([[[UIDevice currentDevice] systemVersion] floatValue] >= 10)
+
 static NSString* _Nonnull kUnityBackgroungDownloadSessionID = @"UnityBackgroundDownload";
 static NSURLSession* gUnityBackgroundDownloadSession = nil;
 
@@ -78,6 +80,7 @@ enum
 @implementation UnityBackgroundDownloadDelegate
 {
     NSMutableDictionary<NSURLSessionDownloadTask*, UnityBackgroundDownload*>* backgroundDownloads;
+	NSMutableDictionary<NSString*, NSData*>* backgroundDownloadResumeDatas;
     UnityHandleEventsForBackgroundURLSession _finishEventsHandler;
 }
 
@@ -93,6 +96,7 @@ enum
 - (id)init
 {
     backgroundDownloads = [[NSMutableDictionary<NSURLSessionDownloadTask*, UnityBackgroundDownload*> alloc] init];
+	backgroundDownloadResumeDatas = [[NSMutableDictionary<NSString*, NSData*> alloc] init];
     return self;
 }
 
@@ -109,9 +113,16 @@ enum
 {
     if (error != nil)
     {
-        UnityBackgroundDownload* download = [backgroundDownloads objectForKey: (NSURLSessionDownloadTask*)task];
+		NSURLSessionDownloadTask* downloadTask = (NSURLSessionDownloadTask*)task;
+        UnityBackgroundDownload* download = [backgroundDownloads objectForKey: downloadTask];
         download.status = kStatusFailed;
         download.error = error.localizedDescription;
+        // check if resume data are available
+        if ([error.userInfo objectForKey:NSURLSessionDownloadTaskResumeData]) {
+            //save resumeData
+            NSData* resumeData = [error.userInfo objectForKey:NSURLSessionDownloadTaskResumeData];
+			[backgroundDownloadResumeDatas setObject: resumeData forKey: downloadTask.taskDescription];
+        }
     }
 }
 
@@ -126,11 +137,23 @@ enum
 
 - (NSURLSessionDownloadTask*)newSessionTask:(NSURLSession*)session withRequest:(NSURLRequest*)request forDestination:(NSString*)dest
 {
-    NSURLSessionDownloadTask *task = [session downloadTaskWithRequest: request];
-    task.taskDescription = dest;
+	NSData* resumeData = [backgroundDownloadResumeDatas objectForKey: dest];
+	NSURLSessionDownloadTask *downloadTask;
+	
+	if (resumeData)
+    {
+        downloadTask = [session downloadTaskWithResumeData: resumeData];
+		[backgroundDownloadResumeDatas removeObjectForKey: dest];
+    }
+	else
+	{
+		downloadTask = [session downloadTaskWithRequest: request];
+	}
+	
+	downloadTask.taskDescription = dest;
     UnityBackgroundDownload* download = [[UnityBackgroundDownload alloc] init];
-    [backgroundDownloads setObject: download forKey: task];
-    return task;
+    [backgroundDownloads setObject: download forKey: downloadTask];
+    return downloadTask;
 }
 
 - (void)collectTasksForSession:(NSURLSession*)session
@@ -285,6 +308,10 @@ extern "C" int32_t UnityBackgroundDownloadGetUrl(void* download, char* buffer)
 {
     NSURLSessionDownloadTask* task = (__bridge NSURLSessionDownloadTask*)download;
     NSString* url = task.originalRequest.URL.absoluteString;
+    if (url == nil || url.length == 0){
+        url = task.currentRequest.URL.absoluteString;
+    }
+    
     return NSStringToUTF16(url, buffer, 2048);
 }
 

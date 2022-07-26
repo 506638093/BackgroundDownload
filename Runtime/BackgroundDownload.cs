@@ -145,6 +145,20 @@ namespace Unity.Networking
             }
         }
 
+        public static Dictionary<string, BackgroundDownload> backgroundDownloadsDict
+        {
+            get
+            {
+                lock (typeof(BackgroundDownload))
+                {
+                    if (_downloads == null)
+                    {
+                        LoadDownloads();
+                    }
+                    return _downloads;
+                }
+            }
+        }
         /// <summary>Holds download configuration. For internal use only.</summary>
         protected BackgroundDownloadConfig _config;
         /// <summary>Hold download status. For internal use only.</summary>
@@ -249,6 +263,8 @@ namespace Unity.Networking
                 }
             }
         }
+
+        public virtual void ContinueDownload() { }
 
         static void LoadDownloads()
         {
